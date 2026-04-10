@@ -47,3 +47,5 @@ scripts/data/
 .idea/
 *.swp
 *.swo
+
+.vercel
