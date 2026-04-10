@@ -1,4 +1,4 @@
-/**
+﻿/**
  * POST/GET /api/query - Semantic similarity search, no PII returned.
  */
 import { NextRequest, NextResponse } from 'next/server';
@@ -41,3 +41,4 @@ export async function GET(req: NextRequest) {
     body: JSON.stringify({ query, topK }),
   }));
 }
+

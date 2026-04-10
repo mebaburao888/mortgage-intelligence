@@ -11,7 +11,7 @@ import { NextRequest } from 'next/server';
 import { parse } from 'csv-parse/sync';
 import { deidentifyRecord, generateProfileText, generateIntentText } from '@/lib/deid';
 import { embedTexts } from '@/lib/embedder';
-import { upsertVectors } from '@/lib/pinecone';
+import { upsertVectors } from '@/lib/chroma';
 import { saveTranche } from '@/lib/tranche-store';
 import crypto from 'crypto';
 import path from 'path';

@@ -1,8 +1,8 @@
-/**
+﻿/**
  * GET /api/segments - K-means clustering over Pinecone profile vectors.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { fetchVectorsForClustering } from '@/lib/chroma';
+import { fetchVectorsForClustering, getIndexStats } from '@/lib/chroma';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { kmeans } = require('ml-kmeans');
 

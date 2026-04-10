@@ -1,4 +1,4 @@
-/**
+﻿/**
  * POST /api/score - Score lead propensity via Pinecone KNN.
  */
 import { NextRequest, NextResponse } from 'next/server';
@@ -54,3 +54,4 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
   }
 }
+
