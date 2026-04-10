@@ -1,48 +1,21 @@
-﻿/**
- * Chroma Cloud client ΓÇö collection access and batch upsert.
- * Replaces Pinecone as the vector store.
- *
- * Collection config:
- *   Tenant:   CHROMA_TENANT
- *   Database: CHROMA_DATABASE
- *   API key:  CHROMA_API_KEY
- *   Collection name auto-derived from CHROMA_COLLECTION_ID (used as name) or 'mortgage-leads'
+/**
+ * Vector store adapter — backed by Pinecone (cloud), same interface as original chroma.ts.
+ * Routes import from this file unchanged; Pinecone is the actual backend.
  */
+import { Pinecone, type RecordMetadata } from '@pinecone-database/pinecone';
 
-import { ChromaClient, Collection, IncludeEnum } from 'chromadb';
+let _client: Pinecone | null = null;
 
-let _client: ChromaClient | null = null;
-let _collection: Collection | null = null;
-
-function getClient(): ChromaClient {
+function getClient(): Pinecone {
   if (!_client) {
-    if (!process.env.CHROMA_API_KEY) {
-      throw new Error('CHROMA_API_KEY is not set');
-    }
-    _client = new ChromaClient({
-      path: 'https://api.trychroma.com',
-      auth: {
-        provider: 'token',
-        credentials: process.env.CHROMA_API_KEY,
-        tokenHeaderType: 'X_CHROMA_TOKEN',
-      },
-      tenant: process.env.CHROMA_TENANT || '62bd10e5-beab-41db-85f9-cdc77617a275',
-      database: process.env.CHROMA_DATABASE || 'LDPOC',
-    });
+    if (!process.env.PINECONE_API_KEY) throw new Error('PINECONE_API_KEY is not set');
+    _client = new Pinecone({ apiKey: process.env.PINECONE_API_KEY });
   }
   return _client;
 }
 
-export async function getCollection(): Promise<Collection> {
-  if (!_collection) {
-    const client = getClient();
-    // Use collection name "mortgage-leads"; cosine distance for normalized embeddings
-    _collection = await client.getOrCreateCollection({
-      name: 'mortgage-leads',
-      metadata: { 'hnsw:space': 'cosine' },
-    });
-  }
-  return _collection;
+function getIndex() {
+  return getClient().index(process.env.PINECONE_INDEX_NAME || 'mortgage-intelligence');
 }
 
 export interface VectorRecord {
@@ -51,131 +24,80 @@ export interface VectorRecord {
   metadata: Record<string, string | number | boolean | null>;
 }
 
-const UPSERT_BATCH_SIZE = 100;
+const BATCH = 100;
 
 export async function upsertVectors(vectors: VectorRecord[]): Promise<void> {
-  const collection = await getCollection();
-
-  for (let i = 0; i < vectors.length; i += UPSERT_BATCH_SIZE) {
-    const batch = vectors.slice(i, i + UPSERT_BATCH_SIZE);
-    await collection.upsert({
-      ids: batch.map((v) => v.id),
-      embeddings: batch.map((v) => v.values),
-      metadatas: batch.map((v) => v.metadata as Record<string, string | number | boolean>),
-    });
+  const index = getIndex();
+  for (let i = 0; i < vectors.length; i += BATCH) {
+    const batch = vectors.slice(i, i + BATCH);
+    await index.upsert(batch.map(v => ({ id: v.id, values: v.values, metadata: v.metadata as RecordMetadata })));
   }
 }
 
 export async function queryVectors(
-  queryVector: number[],
-  topK: number = 20,
-  filter?: Record<string, unknown>
+  queryVector: number[], topK = 20, filter?: Record<string, unknown>
 ): Promise<{ id: string; score: number; metadata: Record<string, unknown> }[]> {
-  const collection = await getCollection();
-
-  const queryParams: {
-    queryEmbeddings: number[][];
-    nResults: number;
-    include: IncludeEnum[];
-    where?: Record<string, unknown>;
-  } = {
-    queryEmbeddings: [queryVector],
-    nResults: topK,
-    include: [IncludeEnum.Metadatas, IncludeEnum.Distances],
-  };
-
-  if (filter && Object.keys(filter).length > 0) {
-    queryParams.where = filter as Record<string, unknown>;
-  }
-
-  const response = await collection.query(queryParams);
-
-  const ids = response.ids[0] || [];
-  const distances = response.distances?.[0] || [];
-  const metadatas = response.metadatas?.[0] || [];
-
-  return ids.map((id, idx) => ({
-    id,
-    // Cosine distance ΓåÆ similarity: 1 - distance (range 0ΓÇô1 for normalized vectors)
-    score: Math.max(0, 1 - (distances[idx] ?? 0)),
-    metadata: (metadatas[idx] as Record<string, unknown>) || {},
-  }));
+  const index = getIndex();
+  const params: Parameters<typeof index.query>[0] = { vector: queryVector, topK, includeMetadata: true };
+  if (filter && Object.keys(filter).length > 0) params.filter = filter as RecordMetadata;
+  const res = await index.query(params);
+  return (res.matches || []).map(m => ({ id: m.id, score: m.score ?? 0, metadata: (m.metadata as Record<string, unknown>) || {} }));
 }
 
-/**
- * Fetch vectors with their embeddings for clustering.
- * Uses collection.get() with include=['embeddings','metadatas'].
- */
 export async function fetchVectorsForClustering(
-  limit: number = 1000,
-  filter?: Record<string, unknown>
+  limit = 1000, filter?: Record<string, unknown>
 ): Promise<{ id: string; embedding: number[]; metadata: Record<string, unknown> }[]> {
-  const collection = await getCollection();
-
-  const getParams: {
-    limit: number;
-    include: IncludeEnum[];
-    where?: Record<string, unknown>;
-  } = {
-    limit,
-    include: [IncludeEnum.Embeddings, IncludeEnum.Metadatas],
-  };
-
-  if (filter && Object.keys(filter).length > 0) {
-    getParams.where = filter as Record<string, unknown>;
+  const index = getIndex();
+  const dims = 1536;
+  const rv = Array.from({ length: dims }, () => Math.random() - 0.5);
+  const norm = Math.sqrt(rv.reduce((s, v) => s + v * v, 0));
+  const nv = rv.map(v => v / norm);
+  const params: Parameters<typeof index.query>[0] = { vector: nv, topK: Math.min(limit, 10000), includeMetadata: true, includeValues: false };
+  if (filter && Object.keys(filter).length > 0) params.filter = filter as RecordMetadata;
+  const q = await index.query(params);
+  const matches = q.matches || [];
+  if (!matches.length) return [];
+  const results: { id: string; embedding: number[]; metadata: Record<string, unknown> }[] = [];
+  for (let i = 0; i < matches.length; i += BATCH) {
+    const ids = matches.slice(i, i + BATCH).map(m => m.id);
+    const fetched = (await index.fetch(ids)).records || {};
+    for (const id of ids) {
+      const r = fetched[id];
+      if (r?.values?.length) results.push({ id, embedding: r.values, metadata: (r.metadata as Record<string, unknown>) || {} });
+    }
   }
-
-  const response = await collection.get(getParams);
-
-  const ids = response.ids || [];
-  const embeddings = (response.embeddings as number[][] | null) || [];
-  const metadatas = response.metadatas || [];
-
-  return ids
-    .map((id, idx) => ({
-      id,
-      embedding: embeddings[idx] || [],
-      metadata: (metadatas[idx] as Record<string, unknown>) || {},
-    }))
-    .filter((r) => r.embedding.length > 0);
+  return results;
 }
 
-/**
- * Query vectors with filter using zero-vector (broad retrieval for export).
- */
 export async function queryWithFilter(
-  topK: number,
-  filter: Record<string, unknown>
+  topK: number, filter: Record<string, unknown>
 ): Promise<{ id: string; metadata: Record<string, unknown> }[]> {
-  const collection = await getCollection();
-
-  const dims = 1536; // text-embedding-3-small
-  const zeroVector = new Array(dims).fill(0) as number[];
-
-  const response = await collection.query({
-    queryEmbeddings: [zeroVector],
-    nResults: topK,
-    include: [IncludeEnum.Metadatas],
-    where: filter as Record<string, unknown>,
-  });
-
-  const ids = response.ids[0] || [];
-  const metadatas = response.metadatas?.[0] || [];
-
-  return ids.map((id, idx) => ({
-    id,
-    metadata: (metadatas[idx] as Record<string, unknown>) || {},
-  }));
+  const index = getIndex();
+  const dims = 1536;
+  const rv = Array.from({ length: dims }, () => Math.random() - 0.5);
+  const norm = Math.sqrt(rv.reduce((s, v) => s + v * v, 0));
+  const nv = rv.map(v => v / norm);
+  const res = await index.query({ vector: nv, topK: Math.min(topK, 10000), includeMetadata: true, filter: filter as RecordMetadata });
+  return (res.matches || []).map(m => ({ id: m.id, metadata: (m.metadata as Record<string, unknown>) || {} }));
 }
 
 export async function getCollectionStats(): Promise<{
   totalVectors: number;
   collectionName: string;
 }> {
-  const collection = await getCollection();
-  const count = await collection.count();
-  return {
-    totalVectors: count,
-    collectionName: collection.name,
-  };
+  return getIndexStats();
+}
+
+export async function getIndexStats(): Promise<{
+  totalVectors: number; indexName: string; collectionName: string;
+  namespaces: Record<string, { vectorCount: number }>; indexFullness: number;
+}> {
+  const index = getIndex();
+  const stats = await index.describeIndexStats();
+  const namespaces: Record<string, { vectorCount: number }> = {};
+  for (const [ns, s] of Object.entries(stats.namespaces || {})) {
+    namespaces[ns] = { vectorCount: (s as any).recordCount ?? 0 };
+  }
+  const name = process.env.PINECONE_INDEX_NAME || "mortgage-intelligence";
+  return { totalVectors: stats.totalRecordCount ?? 0, indexName: name, collectionName: name, namespaces, indexFullness: stats.indexFullness ?? 0 };
 }

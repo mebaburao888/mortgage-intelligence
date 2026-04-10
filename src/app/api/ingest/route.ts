@@ -12,7 +12,7 @@ import { parse } from 'csv-parse/sync';
 import { deidentifyRecord, generateProfileText, generateIntentText } from '@/lib/deid';
 import { embedTexts } from '@/lib/embedder';
 import { upsertVectors } from '@/lib/chroma';
-import { saveTranche } from '@/lib/tranche-store';
+import { addTranche } from '@/lib/tranche-store';
 import crypto from 'crypto';
 import path from 'path';
 import fs from 'fs';
@@ -175,7 +175,7 @@ export async function POST(req: NextRequest) {
           model: 'text-embedding-3-small',
           vector_count: total * 2,
         };
-        saveTranche(manifest);
+        addTranche(manifest);
 
         // ── Source is in memory — never written to disk; no delete needed ─────
         send({ status: 'complete', manifest, message: `Ingested ${total} records (${total * 2} vectors). Source destroyed.` });
