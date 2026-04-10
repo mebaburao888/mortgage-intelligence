@@ -167,13 +167,12 @@ export async function POST(req: NextRequest) {
 
         // ── Save tranche manifest ─────────────────────────────────────────────
         const manifest = {
-          tranche_id: trancheId,
-          record_count: total,
-          source_hash: sourceHash,
-          source_deleted: true,
-          deleted_at: new Date().toISOString(),
-          model: 'text-embedding-3-small',
-          vector_count: total * 2,
+          id: trancheId,
+          timestamp: new Date().toISOString(),
+          recordCount: total,
+          vectorCount: total * 2,
+          source: source || 'upload',
+          status: 'complete' as const,
         };
         addTranche(manifest);
 

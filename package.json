@@ -10,7 +10,7 @@
     "generate-dataset": "node scripts/generate-dataset.js"
   },
   "dependencies": {
-    "@pinecone-database/pinecone": "^3.0.0",
+    "@pinecone-database/pinecone": "^3.0.3",
     "clsx": "^2.1.1",
     "csv-parse": "^6.2.1",
     "lucide-react": "^0.400.0",

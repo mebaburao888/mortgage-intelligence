@@ -2,7 +2,7 @@
  * GET /api/segments - K-means clustering over Pinecone profile vectors.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { fetchVectorsForClustering } from '@/lib/chroma';
+import { fetchVectorsForClustering, getCollectionStats } from '@/lib/chroma';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { kmeans } = require('ml-kmeans');
 
@@ -41,6 +41,7 @@ export async function GET(req: NextRequest) {
     const url = new URL(req.url);
     const k = Math.min(parseInt(url.searchParams.get('k') || '8'), 20);
     
+    const stats = await getCollectionStats();
     if (stats.totalVectors === 0) return NextResponse.json({ error: 'No vectors. Ingest data first.' }, { status: 404 });
 
     const vectors = await fetchVectorsForClustering(
