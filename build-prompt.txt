@@ -1,0 +1,122 @@
+Build a full Next.js 14 app called 'Mortgage Intelligence' that is a complete rebuild of the mortgage de-identification + vector intelligence POC, deployable to Vercel with zero local dependencies.
+
+## Source project to reference
+The original project is at: C:\Users\mebab\.openclaw\workspace\projects\mortgage-deid-poc\
+Key files to read and understand:
+- src/deid.py (de-identification logic)
+- src/embedder.py (embedding logic)
+- src/generate_csv.py (synthetic data generation)
+- src/ingest.py (pipeline)
+- src/query.py (similarity search)
+- src/segments.py (clustering)
+- src/export.py (token export)
+- api.py (Express API routes to replicate)
+- ui/src/tabs/*.jsx (UI tabs to replicate in Next.js)
+- mortgage-deid-architecture.md (full architecture doc)
+
+## What to build
+A Next.js 14 App Router application with:
+
+### Tech stack changes from POC
+- Chroma (local) -> Chroma Cloud
+- Ollama/nomic-embed-text (local) -> OpenAI text-embedding-3-small API
+- Express -> Next.js API routes
+- Vite+React -> Next.js frontend
+- Python -> TypeScript/Node throughout
+
+### Chroma Cloud credentials to wire via env vars
+Use Chroma Cloud instead of Pinecone.
+Collection ID: a06f9877-4928-4396-93bf-8d05f78fc162
+Tenant: 62bd10e5-beab-41db-85f9-cdc77617a275
+Database: LDPOC
+Do NOT hardcode the API key in source. Read it from env var CHROMA_API_KEY.
+
+### Dataset
+Generate a script at scripts/generate-dataset.js that creates 150,000 synthetic mortgage lead records as CSV with these fields:
+first_name, last_name, ssn, dob, email, phone, street, city, state, zip, employer, income, fico, dti, ltv, loan_amount, loan_purpose, loan_type, property_type, occupancy, loan_term, channel, lead_type, lead_score, journey_stage, first_time_buyer, military, gender, marital_status, dependents, bankruptcy, foreclosure, employment_status, tenure_years, outcome, days_to_close, tranche_id
+
+Make it statistically realistic (FICO bell curve around 680, income log-normal, geo distribution matches US population, etc). Save to scripts/data/synthetic_150k.csv.
+
+### Environment variables needed (.env.local.example)
+OPENAI_API_KEY=
+CHROMA_API_KEY=
+CHROMA_TENANT=62bd10e5-beab-41db-85f9-cdc77617a275
+CHROMA_DATABASE=LDPOC
+CHROMA_COLLECTION_ID=a06f9877-4928-4396-93bf-8d05f78fc162
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+DEID_SALT=change-me-to-random-string
+
+### API Routes (src/app/api/)
+
+POST /api/ingest
+- Accept CSV upload (multipart) OR trigger from scripts/data/synthetic_150k.csv
+- Run de-identification pipeline in memory:
+  - DROP: first_name, last_name, ssn, street (exact), phone, email (replaced by tokens)
+  - HASH: email -> email_token (SHA256 + salt), phone -> phone_token
+  - TRANSFORM: dob->age_range+life_stage+generation, zip->zip3+metro+urban_class, income->income_range+tier, employer->industry+tier+stability, fico->band+profile, dti->bucket, ltv->bucket, loan_amount->bucket
+- Generate two text templates per record (Profile + Intent)
+- Embed both via OpenAI text-embedding-3-small
+- Upsert to Pinecone with metadata
+- Delete source
+- Return tranche manifest
+
+GET/POST /api/query
+- Accept natural language query OR structured filters
+- Embed query via OpenAI
+- Search Pinecone by cosine similarity
+- Return top N results with metadata (no tokens)
+
+POST /api/score
+- Accept a new lead (raw fields)
+- De-ID it in memory
+- Embed it
+- Find 20 nearest neighbors in Pinecone
+- Return propensity score (funded neighbors / total neighbors * 100)
+
+GET /api/segments
+- Fetch sample of vectors from Pinecone
+- Run k-means clustering (k=8)
+- Label each cluster by dominant attributes
+- Return segment profiles
+
+GET /api/export
+- Accept segment filter or query
+- Return matching email_token + phone_token pairs
+- Format: CSV download ready for Facebook/Google Custom Audience upload
+
+GET /api/status
+- Return Chroma collection stats / counts when possible
+- Return tranche manifest list from a simple JSON file
+
+### Frontend (src/app/)
+
+Main page: Dashboard at / with sidebar nav and 6 tabs:
+
+1. Ingest tab - Upload CSV or click 'Run on synthetic dataset'. Show progress bar, records processed, time elapsed, final manifest.
+2. Query tab - Natural language search box. Show results as cards with all signal fields. No PII.
+3. Score tab - Form to enter a new lead's details. Show score 0-100, nearest neighbor profiles.
+4. Segments tab - Button to run clustering. Show 8 segment cards with dominant attributes, record count, funded rate.
+5. Export tab - Filter by segment or query. Show count. Download as CSV (email_token, phone_token only).
+6. Status tab - Show Chroma collection stats, total vectors, tranche history table.
+
+### Design
+- Dark navy + electric blue theme
+- Tailwind CSS
+- Lucide icons
+- Clean, professional, demo-ready
+- Works on mobile
+
+### Important constraints
+- ALL de-identification happens server-side in API routes
+- No PII ever reaches the frontend
+- Chroma Cloud upsert/add in safe batches to handle 150k records
+- OpenAI embedding in batches of 50 (rate limit safe)
+- Show realistic progress during ingest (SSE or polling)
+- .env.local.example with all required vars
+- README.md with setup + deploy to Vercel instructions
+
+### Git
+Initialize properly, create a comprehensive .gitignore (exclude node_modules, .env.local, scripts/data/*.csv).
+
+When completely finished, run:
+openclaw system event --text "Done: mortgage-intelligence Next.js app built, ready for Vercel deploy" --mode now

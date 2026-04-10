@@ -1,0 +1,8 @@
+﻿import { NextRequest } from "next/server";
+import Papa from "papaparse";
+import { deidentifyRecord, generateProfileText, generateIntentText } from "@/lib/deid";
+import { embedTexts } from "@/lib/embedder";
+import { upsertVectors, VectorRecord } from "@/lib/pinecone";
+import { addTranche, updateTranche } from "@/lib/tranche-store";
+import path from "path";
+import fs from "fs";
