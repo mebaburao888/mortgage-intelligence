@@ -1,9 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  experimental: {
-    serverComponentsExternalPackages: ['chromadb', 'ml-kmeans'],
-  },
+  serverExternalPackages: ['chromadb', 'ml-kmeans'],
   webpack: (config, { isServer }) => {
     if (isServer) {
       // Chromadb tries to load optional embedding modules via HTTPS — ignore them

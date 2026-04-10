@@ -4,7 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { deidentifyRecord, generateProfileText, DeidentifiedRecord } from '@/lib/deid';
 import { embedSingle } from '@/lib/embedder';
-import { queryVectors } from '@/lib/pinecone';
+import { queryVectors } from '@/lib/chroma';
 
 export const runtime = 'nodejs';
 
