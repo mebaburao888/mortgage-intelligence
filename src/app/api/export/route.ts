@@ -3,7 +3,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { embedSingle } from '@/lib/embedder';
-import { queryVectors, queryWithFilter } from '@/lib/pinecone';
+import { queryVectors, queryWithFilter } from '@/lib/chroma';
 
 export const runtime = 'nodejs';
 
@@ -15,9 +15,7 @@ function buildCsv(records: { email_token: string; phone_token: string }[]) {
   });
   const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   return {
-    csv: 'email_token,phone_token
-' + unique.map(r => r.email_token + ',' + r.phone_token).join('
-'),
+    csv: `email_token,phone_token\n${unique.map(r => r.email_token + ',' + r.phone_token).join('\n')}`,
     count: unique.length,
     filename: 'audience_export_' + ts + '.csv',
   };

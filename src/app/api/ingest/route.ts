@@ -11,7 +11,7 @@ import { NextRequest } from 'next/server';
 import { parse } from 'csv-parse/sync';
 import { deidentifyRecord, generateProfileText, generateIntentText } from '@/lib/deid';
 import { embedTexts } from '@/lib/embedder';
-import { upsertVectors } from '@/lib/chroma';
+import { upsertVectors } from '@/lib/pinecone';
 import { saveTranche } from '@/lib/tranche-store';
 import crypto from 'crypto';
 import path from 'path';
@@ -149,7 +149,7 @@ export async function POST(req: NextRequest) {
             upsertBuffer.push({ id: `${baseId}-intent`, values: intentEmbeds[j], metadata: { ...meta, vector_type: 'intent' } });
           }
 
-          // Flush to Chroma when buffer is large enough
+          // Flush to Pinecone when buffer is large enough
           if (upsertBuffer.length >= UPSERT_BATCH * 2) {
             await upsertVectors(upsertBuffer);
             upsertBuffer = [];
